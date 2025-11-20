@@ -2,8 +2,8 @@ pipeline {
     agent any
 
     environment {
-        DOCKERHUB_CREDENTIALS = credentials('dockerhub-creds')     // Username + Password
-        AWS_CREDENTIALS       = credentials('aws-creds')            // Access key + Secret
+        DOCKERHUB_CREDENTIALS = credentials('dockerhub-creds')   // DockerHub username/password
+        AWS_CREDENTIALS       = credentials('aws-creds')          // AWS Access Key / Secret
         AWS_REGION            = 'ap-south-1'
     }
 
@@ -11,9 +11,15 @@ pipeline {
 
         stage('Checkout Code') {
             steps {
-                checkout scm
+                git branch: 'main',
+                    url: 'https://github.com/Bhuvisai22/devops-build.git'
+
                 script {
-                    env.BRANCH = sh(script: "echo ${GIT_BRANCH} | sed 's|origin/||'", returnStdout: true).trim()
+                    env.BRANCH = sh(
+                        script: "git rev-parse --abbrev-ref HEAD",
+                        returnStdout: true
+                    ).trim()
+
                     echo "Building for branch: ${env.BRANCH}"
                 }
             }
@@ -32,7 +38,6 @@ pipeline {
                 }
 
                 sh """
-                    echo "Building Docker image: ${env.IMAGE}"
                     docker build -t ${env.IMAGE} .
                 """
             }
@@ -41,10 +46,7 @@ pipeline {
         stage('Push to DockerHub') {
             steps {
                 sh """
-                    echo "Login to DockerHub..."
                     docker login -u ${DOCKERHUB_CREDENTIALS_USR} -p ${DOCKERHUB_CREDENTIALS_PSW}
-
-                    echo "Pushing image..."
                     docker push ${env.IMAGE}
                 """
             }
@@ -63,16 +65,13 @@ pipeline {
                     export AWS_SECRET_ACCESS_KEY=${AWS_CREDENTIALS_PSW}
                     export AWS_DEFAULT_REGION=${AWS_REGION}
 
-                    ssh -o StrictHostKeyChecking=no ec2-user@YOUR_EC2_PUBLIC_IP << EOF
+                    ssh -o StrictHostKeyChecking=no ec2-user@3.7.70.117 << EOF
                         docker stop app || true
                         docker rm app || true
 
-                        echo "Pulling latest image..."
                         docker pull ${env.IMAGE}
-
-                        echo "Starting container..."
                         docker run -d --name app -p 80:80 ${env.IMAGE}
-                    EOF
+EOF
                 """
             }
         }
@@ -80,10 +79,10 @@ pipeline {
 
     post {
         success {
-            echo "Pipeline executed successfully."
+            echo "Pipeline executed successfully for branch ${env.BRANCH}"
         }
         failure {
-            echo "Pipeline failed. Check logs."
+            echo "Pipeline failed."
         }
     }
 }
