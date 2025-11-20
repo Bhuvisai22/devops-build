@@ -1,3 +1,4 @@
+
 pipeline {
     agent any
 
@@ -66,12 +67,12 @@ pipeline {
                     export AWS_SECRET_ACCESS_KEY=${AWS_CREDENTIALS_PSW}
                     export AWS_DEFAULT_REGION=${AWS_REGION}
 
-                    ssh -o StrictHostKeyChecking=no ec2-user@YOUR_EC2_PUBLIC_IP << 'EOF'
+                    ssh -o StrictHostKeyChecking=no ec2-user@YOUR_EC2_PUBLIC_IP << EOF
                         docker stop trend-app || true
                         docker rm trend-app || true
                         docker pull ${env.DOCKER_IMAGE}
                         docker run -d --name trend-app -p 80:80 ${env.DOCKER_IMAGE}
-                    EOF
+EOF
                 """
             }
         }
