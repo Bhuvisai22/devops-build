@@ -2,9 +2,7 @@ pipeline {
     agent any
 
     environment {
-        DOCKERHUB_CREDENTIALS = credentials('dockerhub-creds')   // DockerHub username/password
-        AWS_CREDENTIALS       = credentials('aws-jenkins')        // AWS Access Key / Secret
-        AWS_REGION            = 'ap-south-1'
+        DOCKERHUB_CREDENTIALS = credentials('dockerhub-creds')
     }
 
     stages {
@@ -36,10 +34,7 @@ pipeline {
                         error "Unsupported branch: ${env.BRANCH}"
                     }
                 }
-
-                sh """
-                    docker build -t ${env.IMAGE} .
-                """
+                sh "docker build -t ${env.IMAGE} ."
             }
         }
 
@@ -49,6 +44,16 @@ pipeline {
                     docker login -u ${DOCKERHUB_CREDENTIALS_USR} -p ${DOCKERHUB_CREDENTIALS_PSW}
                     docker push ${env.IMAGE}
                 """
+            }
+        }
+
+        stage('Test AWS Credentials') {
+            steps {
+                withAWS(credentials: 'aws-jenkins', region: 'ap-south-1') {
+                    sh """
+                        aws sts get-caller-identity
+                    """
+                }
             }
         }
     }
