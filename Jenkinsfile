@@ -52,37 +52,6 @@ pipeline {
             }
         }
 
-        stage('Deploy to AWS EC2') {
-            when {
-                anyOf {
-                    branch 'dev'
-                    branch 'master'
-                }
-            }
-            steps {
-                sh """
-                    export AWS_ACCESS_KEY_ID=${AWS_CREDENTIALS_USR}
-                    export AWS_SECRET_ACCESS_KEY=${AWS_CREDENTIALS_PSW}
-                    export AWS_DEFAULT_REGION=${AWS_REGION}
-
-                    ssh -o StrictHostKeyChecking=no ec2-user@3.7.70.117 << EOF
-                        docker stop app || true
-                        docker rm app || true
-
-                        docker pull ${env.IMAGE}
-                        docker run -d --name app -p 80:80 ${env.IMAGE}
-EOF
-                """
-            }
-        }
-    }
-
-    post {
-        success {
-            echo "Pipeline executed successfully for branch ${env.BRANCH}"
-        }
-        failure {
-            echo "Pipeline failed."
-        }
-    }
+      
 }
+
