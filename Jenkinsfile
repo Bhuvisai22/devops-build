@@ -2,8 +2,8 @@ pipeline {
     agent any
 
     environment {
-        DOCKERHUB_CREDENTIALS = credentials('dockerhub-creds')   // DockerHub creds
-        AWS_CREDENTIALS       = credentials('aws-jenkins')       // Correct AWS creds ID
+        DOCKERHUB_CREDENTIALS = credentials('dockerhub-creds')   // DockerHub username/password
+        AWS_CREDENTIALS       = credentials('aws-jenkins')        // AWS Access Key / Secret
         AWS_REGION            = 'ap-south-1'
     }
 
@@ -49,3 +49,7 @@ pipeline {
                     docker login -u ${DOCKERHUB_CREDENTIALS_USR} -p ${DOCKERHUB_CREDENTIALS_PSW}
                     docker push ${env.IMAGE}
                 """
+            }
+        }
+    }
+}
