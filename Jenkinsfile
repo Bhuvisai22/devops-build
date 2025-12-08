@@ -3,7 +3,7 @@ pipeline {
 
     environment {
         DOCKERHUB_USERNAME = 'saidoc540'
-        APP_NAME           = 'my-app'
+        APP_NAME           = 'react-app'
         DEV_IMAGE          = "${DOCKERHUB_USERNAME}/${APP_NAME}-dev"
         PROD_IMAGE         = "${DOCKERHUB_USERNAME}/${APP_NAME}-prod"
     }
@@ -84,3 +84,4 @@ pipeline {
         }
     }
 }
+
