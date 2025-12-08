@@ -2,57 +2,81 @@ pipeline {
     agent any
 
     environment {
-        DOCKERHUB_CREDENTIALS = credentials('dockerhub-creds')
+        IMAGE_NAME = "react-app"
+        TAG = "latest"                          // you can change this
+        DOCKERHUB_CREDENTIALS = "dockerhub-cred" // Jenkins credential ID
+
+        // EC2 details
+        EC2_HOST = "13.203.213.54"
+        EC2_USER = "ubuntu"
+        SSH_CREDENTIALS = "ec2-ssh-key"         // Jenkins SSH credential ID
     }
 
     stages {
 
-        stage('Checkout Code') {
+        stage('Clone Repository') {
             steps {
-                git branch: 'dev',
-                    url: 'https://github.com/Bhuvisai22/devops-build.git'
-
-                script {
-                    env.BRANCH = sh(
-                        script: "git rev-parse --abbrev-ref HEAD",
-                        returnStdout: true
-                    ).trim()
-
-                    echo "Building for branch: ${env.BRANCH}"
-                }
+                git branch: 'main', url: 'https://github.com/Bhuvisai22/devops-build.git'
             }
         }
 
         stage('Build Docker Image') {
             steps {
                 script {
-                    if (env.BRANCH == 'dev') {
-                        env.IMAGE = "${DOCKERHUB_CREDENTIALS_USR}/dev:${BUILD_NUMBER}"
-                    } else if (env.BRANCH == 'master') {
-                        env.IMAGE = "${DOCKERHUB_CREDENTIALS_USR}/prod:${BUILD_NUMBER}"
-                    } else {
-                        error "Unsupported branch: ${env.BRANCH}"
-                    }
+                    sh """
+                      docker build -t ${IMAGE_NAME}:${TAG} .
+                    """
                 }
-                sh "docker build -t ${env.IMAGE} ."
+            }
+        }
+
+        stage('Login to DockerHub') {
+            steps {
+                withCredentials([usernamePassword(
+                    credentialsId: DOCKERHUB_CREDENTIALS,
+                    usernameVariable: 'USER',
+                    passwordVariable: 'PASS'
+                )]) {
+                    sh '''
+                      echo "Logging into DockerHub..."
+                      echo "$PASS" | docker login -u "$USER" --password-stdin
+                    '''
+                }
             }
         }
 
         stage('Push to DockerHub') {
             steps {
-                sh """
-                    docker login -u ${DOCKERHUB_CREDENTIALS_USR} -p ${DOCKERHUB_CREDENTIALS_PSW}
-                    docker push ${env.IMAGE}
-                """
+                script {
+                    sh """
+                      docker push ${IMAGE_NAME}:${TAG}
+                    """
+                }
             }
         }
 
-        stage('Test AWS Credentials') {
+        stage('Deploy to EC2') {
             steps {
-                withAWS(credentials: 'aws-jenkins', region: 'ap-south-1') {
-                    sh """
-                        aws sts get-caller-identity
-                    """
+                script {
+                    sshagent(credentials: [env.SSH_CREDENTIALS]) {
+                        sh """
+                          ssh -o StrictHostKeyChecking=no ${EC2_USER}@${EC2_HOST} '
+                            set -e
+
+                            echo "Pulling latest image ${IMAGE_NAME}:${TAG}..."
+                            docker pull ${IMAGE_NAME}:${TAG}
+
+                            echo "Stopping old container (if any)..."
+                            docker stop react-app || true
+                            docker rm react-app || true
+
+                            echo "Starting new container..."
+                            docker run -d --name react-appcontainer -p 80:80 ${IMAGE_NAME}:${TAG}
+
+                            echo "Deployment completed on EC2"
+                          '
+                        """
+                    }
                 }
             }
         }
