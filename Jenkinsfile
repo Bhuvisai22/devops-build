@@ -2,84 +2,85 @@ pipeline {
     agent any
 
     environment {
-        IMAGE_NAME = "react-app"
-        TAG = "latest"                          // you can change this
-        DOCKERHUB_CREDENTIALS = "dockerhub-cred" // Jenkins credential ID
-
-        // EC2 details
-        EC2_HOST = "13.203.213.54"
-        EC2_USER = "ubuntu"
-        SSH_CREDENTIALS = "ec2-ssh-key"         // Jenkins SSH credential ID
+        DOCKERHUB_USERNAME = 'saidoc540'
+        APP_NAME           = 'my-app'
+        DEV_IMAGE          = "${DOCKERHUB_USERNAME}/${APP_NAME}-dev"
+        PROD_IMAGE         = "${DOCKERHUB_USERNAME}/${APP_NAME}-prod"
     }
 
     stages {
-
-        stage('Clone Repository') {
+        stage('Checkout') {
             steps {
-                git branch: 'main', url: 'https://github.com/Bhuvisai22/devops-build.git'
+                checkout scm
             }
         }
 
         stage('Build Docker Image') {
             steps {
                 script {
-                    sh """
-                      docker build -t ${IMAGE_NAME}:${TAG} .
-                    """
+                    def tag = env.BUILD_NUMBER
+
+                    if (env.BRANCH_NAME == 'dev') {
+                        echo "Building Docker image for DEV branch..."
+                        sh "docker build -t ${DEV_IMAGE}:${tag} ."
+                    } else if (env.BRANCH_NAME == 'prod') {
+                        echo "Building Docker image for PROD branch..."
+                        sh "docker build -t ${PROD_IMAGE}:${tag} ."
+                    } else {
+                        echo "Skipping build: only 'dev' and 'prod' branches are supported."
+                        currentBuild.result = 'ABORTED'
+                        error("Unsupported branch: ${env.BRANCH_NAME}")
+                    }
                 }
             }
         }
 
-        stage('Login to DockerHub') {
-            steps {
-                withCredentials([usernamePassword(
-                    credentialsId: DOCKERHUB_CREDENTIALS,
-                    usernameVariable: 'USER',
-                    passwordVariable: 'PASS'
-                )]) {
-                    sh '''
-                      echo "Logging into DockerHub..."
-                      echo "$PASS" | docker login -u "$USER" --password-stdin
-                    '''
-                }
-            }
-        }
-
-        stage('Push to DockerHub') {
+        stage('Push to Docker Hub') {
             steps {
                 script {
-                    sh """
-                      docker push ${IMAGE_NAME}:${TAG}
-                    """
+                    def tag = env.BUILD_NUMBER
+
+                    docker.withRegistry('https://registry.hub.docker.com', 'dockerhub-creds') {
+                        if (env.BRANCH_NAME == 'dev') {
+                            echo "Pushing to Docker Hub: ${DEV_IMAGE}:${tag}"
+                            sh "docker push ${DEV_IMAGE}:${tag}"
+                            // Optional: update 'latest' tag for dev
+                            sh "docker tag ${DEV_IMAGE}:${tag} ${DEV_IMAGE}:latest"
+                            sh "docker push ${DEV_IMAGE}:latest"
+                        } else if (env.BRANCH_NAME == 'prod') {
+                            echo "Pushing to Docker Hub: ${PROD_IMAGE}:${tag}"
+                            sh "docker push ${PROD_IMAGE}:${tag}"
+                            // Optional: update 'latest' for prod (use cautiously!)
+                            sh "docker tag ${PROD_IMAGE}:${tag} ${PROD_IMAGE}:latest"
+                            sh "docker push ${PROD_IMAGE}:latest"
+                        }
+                    }
                 }
             }
         }
 
-        stage('Deploy to EC2') {
+        stage('Deploy (Optional)') {
             steps {
                 script {
-                    sshagent(credentials: [env.SSH_CREDENTIALS]) {
-                        sh """
-                          ssh -o StrictHostKeyChecking=no ${EC2_USER}@${EC2_HOST} '
-                            set -e
-
-                            echo "Pulling latest image ${IMAGE_NAME}:${TAG}..."
-                            docker pull ${IMAGE_NAME}:${TAG}
-
-                            echo "Stopping old container (if any)..."
-                            docker stop react-app || true
-                            docker rm react-app || true
-
-                            echo "Starting new container..."
-                            docker run -d --name react-appcontainer -p 80:80 ${IMAGE_NAME}:${TAG}
-
-                            echo "Deployment completed on EC2"
-                          '
-                        """
+                    if (env.BRANCH_NAME == 'dev') {
+                        echo "Deploying to DEV environment..."
+                        // Example: kubectl --context=dev apply -f k8s/dev/
+                        // Or docker-compose -f docker-compose.dev.yml up -d
+                    } else if (env.BRANCH_NAME == 'prod') {
+                        echo "Deploying to PROD environment..."
+                        // Example: kubectl --context=prod apply -f k8s/prod/
                     }
                 }
             }
         }
     }
-}
 
+    post {
+        success {
+            echo "Pipeline completed successfully for branch: ${env.BRANCH_NAME}"
+        }
+        failure {
+            echo "Pipeline failed for branch: ${env.BRANCH_NAME}"
+        }
+    }
+}
