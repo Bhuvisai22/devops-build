@@ -3,11 +3,11 @@ pipeline {
 
   environment {
     // credential IDs in Jenkins
-    DOCKERHUB_CRED = 'dockerhub-creds'     // username/password
-    GITHUB_CRED    = 'github-creds'        // optional, if you need to access submodules, etc.
-    REGISTRY_DEV   = '$saidoc540/dev'   // replace with your docker hub dev repo
-    REGISTRY_PROD  = '$saidoc540/prod' // replace with your docker hub prod repo
-    // tag strategy: use BRANCH name + short commit or build number
+    DOCKERHUB_CRED = 'dockerhub-creds'    
+    GITHUB_CRED    = 'github-creds'       
+    REGISTRY_DEV   = '$saidoc540/dev'   
+    REGISTRY_PROD  = '$saidoc540/prod' 
+  
     SHORT_COMMIT = "${env.GIT_COMMIT?.take(8)}"
   }
 
@@ -129,3 +129,4 @@ pipeline {
     }
   }
 }
+
