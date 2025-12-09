@@ -40,46 +40,25 @@ pipeline {
     }
 
    stage('Push Docker Image') {
-  steps {
-    script {
-      withCredentials([usernamePassword(credentialsId: env.DOCKERHUB_CRED, usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
-        sh 'echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin'
+    steps {
+        script {
+            def dockerRepo = (env.BRANCH_NAME == 'dev') 
+                                ? "saidoc540/dev" 
+                                : "saidoc540/prod"
 
-        def branch = env.BRANCH_NAME ?: (env.GIT_BRANCH ?: 'unknown').replaceAll('origin/', '')
-        // Ensure registry variables are set correctly (no leading slash)
-        if (!env.REGISTRY_DEV) {
-          error "REGISTRY_DEV not set. Please set env.REGISTRY_DEV to <dockerhub-user>/<repo>-dev"
-        }
-        if (!env.REGISTRY_PROD) {
-          error "REGISTRY_PROD not set. Please set env.REGISTRY_PROD to <dockerhub-user>/<repo>-prod"
-        }
+            echo "Pushing to Docker repo: ${dockerRepo}"
 
-        // compute destination and push only for dev/master
-        if (branch == 'dev') {
-          def dest = "${env.REGISTRY_DEV}:${env.IMAGE_TAG}"
-          sh """
-            docker tag temp-image:${env.IMAGE_TAG} ${dest}
-            docker push ${dest}
-            docker tag temp-image:${env.IMAGE_TAG} ${env.REGISTRY_DEV}:latest-dev
-            docker push ${env.REGISTRY_DEV}:latest-dev
-          """
-        } else if (branch == 'master' || branch == 'main') {
-          def dest = "${env.REGISTRY_PROD}:${env.IMAGE_TAG}"
-          sh """
-            docker tag temp-image:${env.IMAGE_TAG} ${dest}
-            docker push ${dest}
-            docker tag temp-image:${env.IMAGE_TAG} ${env.REGISTRY_PROD}:latest
-            docker push ${env.REGISTRY_PROD}:latest
-          """
-        } else {
-          echo "Branch ${branch} - skipping push (only dev/master push to dockerhub)"
+            withCredentials([string(credentialsId: 'docker-pass', variable: 'DOCKER_PASS')]) {
+                sh """
+                    echo "$DOCKER_PASS" | docker login -u saidoc540 --password-stdin
+                    docker tag temp-image:${IMAGE_TAG} ${dockerRepo}:${IMAGE_TAG}
+                    docker push ${dockerRepo}:${IMAGE_TAG}
+                """
+            }
         }
-
-        sh "docker logout"
-      }
     }
-  }
 }
+
 
 
     stage('Deploy (optional)') {
@@ -119,5 +98,6 @@ pipeline {
     }
   }
 }
+
 
 
