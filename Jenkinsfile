@@ -39,58 +39,48 @@ pipeline {
       }
     }
 
-    stage('Build Docker Image') {
-      steps {
-        script {
-          // compute image name and tag based on branch
-          def branch = env.BRANCH_NAME ?: (env.GIT_BRANCH ?: 'unknown').replaceAll('origin/', '')
-          def imgTag = "${branch}-${env.SHORT_COMMIT}-${env.BUILD_NUMBER}"
-          env.IMAGE_TAG = imgTag
-          echo "Branch: ${branch}  Image tag: ${imgTag}"
+   stage('Push Docker Image') {
+  steps {
+    script {
+      withCredentials([usernamePassword(credentialsId: env.DOCKERHUB_CRED, usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+        sh 'echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin'
 
-          // Build using docker CLI (docker pipeline alternative also available)
-          sh "docker build -t temp-image:${imgTag} ."
+        def branch = env.BRANCH_NAME ?: (env.GIT_BRANCH ?: 'unknown').replaceAll('origin/', '')
+        // Ensure registry variables are set correctly (no leading slash)
+        if (!env.REGISTRY_DEV) {
+          error "REGISTRY_DEV not set. Please set env.REGISTRY_DEV to <dockerhub-user>/<repo>-dev"
         }
+        if (!env.REGISTRY_PROD) {
+          error "REGISTRY_PROD not set. Please set env.REGISTRY_PROD to <dockerhub-user>/<repo>-prod"
+        }
+
+        // compute destination and push only for dev/master
+        if (branch == 'dev') {
+          def dest = "${env.REGISTRY_DEV}:${env.IMAGE_TAG}"
+          sh """
+            docker tag temp-image:${env.IMAGE_TAG} ${dest}
+            docker push ${dest}
+            docker tag temp-image:${env.IMAGE_TAG} ${env.REGISTRY_DEV}:latest-dev
+            docker push ${env.REGISTRY_DEV}:latest-dev
+          """
+        } else if (branch == 'master' || branch == 'main') {
+          def dest = "${env.REGISTRY_PROD}:${env.IMAGE_TAG}"
+          sh """
+            docker tag temp-image:${env.IMAGE_TAG} ${dest}
+            docker push ${dest}
+            docker tag temp-image:${env.IMAGE_TAG} ${env.REGISTRY_PROD}:latest
+            docker push ${env.REGISTRY_PROD}:latest
+          """
+        } else {
+          echo "Branch ${branch} - skipping push (only dev/master push to dockerhub)"
+        }
+
+        sh "docker logout"
       }
     }
+  }
+}
 
-    stage('Push Docker Image') {
-      steps {
-        script {
-          // login to Docker Hub, then tag & push to the correct repo
-          withCredentials([usernamePassword(credentialsId: env.DOCKERHUB_CRED, usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
-            sh '''
-              echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
-            '''
-
-            def branch = env.BRANCH_NAME ?: (env.GIT_BRANCH ?: 'unknown').replaceAll('origin/', '')
-            if (branch == 'dev') {
-              sh """
-                docker tag temp-image:${env.IMAGE_TAG} ${REGISTRY_DEV}:${env.IMAGE_TAG}
-                docker push ${REGISTRY_DEV}:${env.IMAGE_TAG}
-                docker tag temp-image:${env.IMAGE_TAG} ${REGISTRY_DEV}:latest-dev
-                docker push ${REGISTRY_DEV}:latest-dev
-              """
-            } else if (branch == 'master' || branch == 'main') {
-              // prod push
-              sh """
-                docker tag temp-image:${env.IMAGE_TAG} ${REGISTRY_PROD}:${env.IMAGE_TAG}
-                docker push ${REGISTRY_PROD}:${env.IMAGE_TAG}
-                # optional semantic tag: latest for production
-                docker tag temp-image:${env.IMAGE_TAG} ${REGISTRY_PROD}:latest
-                docker push ${REGISTRY_PROD}:latest
-              """
-            } else {
-              // for feature branches, you may choose to push to a dev repo or skip push
-              echo "Branch ${branch} - not pushing to Docker Hub (only dev and master are pushed by policy)"
-            }
-
-            // logout
-            sh "docker logout"
-          } // withCredentials
-        } // script
-      } // steps
-    }
 
     stage('Deploy (optional)') {
       when {
@@ -129,4 +119,5 @@ pipeline {
     }
   }
 }
+
 
