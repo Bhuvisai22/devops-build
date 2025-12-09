@@ -1,81 +1,131 @@
 pipeline {
-    agent any
+  agent any
 
-    environment {
-        DOCKERHUB_USERNAME = 'saidoc540'
-        APP_NAME           = 'react-app'
-        DEV_IMAGE          = "${DOCKERHUB_USERNAME}/dev"
-        PROD_IMAGE         = "${DOCKERHUB_USERNAME}/prod"
+  environment {
+    // credential IDs in Jenkins
+    DOCKERHUB_CRED = 'dockerhub-creds'     // username/password
+    GITHUB_CRED    = 'github-creds'        // optional, if you need to access submodules, etc.
+    REGISTRY_DEV   = '$saidoc540/dev'   // replace with your docker hub dev repo
+    REGISTRY_PROD  = '$saidoc540/prod' // replace with your docker hub prod repo
+    // tag strategy: use BRANCH name + short commit or build number
+    SHORT_COMMIT = "${env.GIT_COMMIT?.take(8)}"
+  }
+
+  options {
+    // keep a reasonable number of builds
+    buildDiscarder(logRotator(numToKeepStr: '20', artifactNumToKeepStr: '5'))
+    timestamps()
+  }
+
+  stages {
+    stage('Checkout') {
+      steps {
+        checkout scm
+        script {
+          // ensure GIT_COMMIT is available
+          env.GIT_COMMIT = sh(script: 'git rev-parse --verify HEAD', returnStdout: true).trim()
+        }
+      }
     }
 
-    stages {
-        stage('Checkout') {
-            steps {
-                checkout scm
-            }
-        }
-
-        stage('Build Docker Image') {
-            steps {
-                script {
-                    def tag = env.BUILD_NUMBER
-
-                    if (env.BRANCH_NAME == 'dev') {
-                        echo "Building Docker image for DEV branch..."
-                        sh "docker build -t ${DEV_IMAGE}:${tag} ."
-                    } else if (env.BRANCH_NAME == 'prod') {
-                        echo "Building Docker image for PROD branch..."
-                        sh "docker build -t ${PROD_IMAGE}:${tag} ."
-                    } else {
-                        error("Unsupported branch: ${env.BRANCH_NAME}. Only 'dev' and 'prod' allowed.")
-                    }
-                }
-            }
-        }
-
-        stage('Push to Docker Hub') {
-            steps {
-                script {
-                    docker.withRegistry('https://registry.hub.docker.com', 'dockerhub-creds') {
-                        if (env.BRANCH_NAME == 'dev') {
-                            echo "Pushing to Docker Hub: ${DEV_IMAGE}:${env.BUILD_NUMBER}"
-                            sh "docker push ${DEV_IMAGE}:${env.BUILD_NUMBER}"
-                            // Optional: update 'latest' tag
-                            sh "docker tag ${DEV_IMAGE}:${env.BUILD_NUMBER} ${DEV_IMAGE}:latest"
-                            sh "docker push ${DEV_IMAGE}:latest"
-                        } else if (env.BRANCH_NAME == 'prod') {
-                            echo "Pushing to Docker Hub: ${PROD_IMAGE}:${env.BUILD_NUMBER}"
-                            sh "docker push ${PROD_IMAGE}:${env.BUILD_NUMBER}"
-                            // Optional: update 'latest' tag
-                            sh "docker tag ${PROD_IMAGE}:${env.BUILD_NUMBER} ${PROD_IMAGE}:latest"
-                            sh "docker push ${PROD_IMAGE}:latest"
-                        }
-                    }
-                }
-            }
-        }
-
-        stage('Deploy (Optional)') {
-            steps {
-                script {
-                    if (env.BRANCH_NAME == 'dev') {
-                        echo "Deploying to DEV environment..."
-                        // Example: sh 'kubectl --context=dev apply -f k8s/dev/'
-                    } else if (env.BRANCH_NAME == 'prod') {
-                        echo "Deploying to PROD environment..."
-                        // Example: sh 'kubectl --context=prod apply -f k8s/prod/'
-                    }
-                }
-            }
-        }
+    stage('Build & Unit Tests') {
+      steps {
+        // run your project's build and tests
+        sh '''
+           echo "Run build and unit tests here"
+           # example for maven: mvn -B clean package
+           # example for node: npm ci && npm test
+        '''
+      }
     }
 
-    post {
-        success {
-            echo "✅ Pipeline completed successfully for branch: ${env.BRANCH_NAME}"
+    stage('Build Docker Image') {
+      steps {
+        script {
+          // compute image name and tag based on branch
+          def branch = env.BRANCH_NAME ?: (env.GIT_BRANCH ?: 'unknown').replaceAll('origin/', '')
+          def imgTag = "${branch}-${env.SHORT_COMMIT}-${env.BUILD_NUMBER}"
+          env.IMAGE_TAG = imgTag
+          echo "Branch: ${branch}  Image tag: ${imgTag}"
+
+          // Build using docker CLI (docker pipeline alternative also available)
+          sh "docker build -t temp-image:${imgTag} ."
         }
-        failure {
-            echo "❌ Pipeline failed for branch: ${env.BRANCH_NAME}"
-        }
+      }
     }
+
+    stage('Push Docker Image') {
+      steps {
+        script {
+          // login to Docker Hub, then tag & push to the correct repo
+          withCredentials([usernamePassword(credentialsId: env.DOCKERHUB_CRED, usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+            sh '''
+              echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+            '''
+
+            def branch = env.BRANCH_NAME ?: (env.GIT_BRANCH ?: 'unknown').replaceAll('origin/', '')
+            if (branch == 'dev') {
+              sh """
+                docker tag temp-image:${env.IMAGE_TAG} ${REGISTRY_DEV}:${env.IMAGE_TAG}
+                docker push ${REGISTRY_DEV}:${env.IMAGE_TAG}
+                docker tag temp-image:${env.IMAGE_TAG} ${REGISTRY_DEV}:latest-dev
+                docker push ${REGISTRY_DEV}:latest-dev
+              """
+            } else if (branch == 'master' || branch == 'main') {
+              // prod push
+              sh """
+                docker tag temp-image:${env.IMAGE_TAG} ${REGISTRY_PROD}:${env.IMAGE_TAG}
+                docker push ${REGISTRY_PROD}:${env.IMAGE_TAG}
+                # optional semantic tag: latest for production
+                docker tag temp-image:${env.IMAGE_TAG} ${REGISTRY_PROD}:latest
+                docker push ${REGISTRY_PROD}:latest
+              """
+            } else {
+              // for feature branches, you may choose to push to a dev repo or skip push
+              echo "Branch ${branch} - not pushing to Docker Hub (only dev and master are pushed by policy)"
+            }
+
+            // logout
+            sh "docker logout"
+          } // withCredentials
+        } // script
+      } // steps
+    }
+
+    stage('Deploy (optional)') {
+      when {
+        anyOf {
+          branch 'dev'
+          branch 'master'
+        }
+      }
+      steps {
+        script {
+          def branch = env.BRANCH_NAME ?: (env.GIT_BRANCH ?: 'unknown').replaceAll('origin/', '')
+          if (branch == 'dev') {
+            echo "Triggering dev deployment"
+            // example: kubectl set image or helm upgrade
+            // sh "kubectl --kubeconfig=/path/to/kubeconfig set image deployment/myapp myapp=${REGISTRY_DEV}:${env.IMAGE_TAG}"
+          } else if (branch == 'master' || branch == 'main') {
+            echo "Triggering prod deployment"
+            // sh "kubectl --kubeconfig=/path/to/kubeconfig set image deployment/myapp myapp=${REGISTRY_PROD}:${env.IMAGE_TAG}"
+          }
+        }
+      }
+    }
+  }
+
+  post {
+    success {
+      echo "Build, push & (optional) deploy succeeded."
+      // optionally notify Slack/email
+    }
+    failure {
+      echo "Build failed."
+    }
+    always {
+      // cleanup local image
+      sh 'docker rmi temp-image:${IMAGE_TAG} || true'
+    }
+  }
 }
