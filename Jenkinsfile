@@ -6,12 +6,21 @@ pipeline {
         DOCKERHUB_USERNAME = 'saidoc540'
         APP_NAME = 'react-app'  // Change to your app name
         AWS_REGION = 'ap-south-1'  // Adjust as needed
+        BRANCH_NAME = ''  // Will be populated in Checkout stage
     }
 
     stages {
         stage('Checkout') {
             steps {
-                checkout scm
+                script {
+                    checkout scm
+                    // Manually capture current branch name
+                    env.BRANCH_NAME = sh(
+                        script: 'git rev-parse --abbrev-ref HEAD',
+                        returnStdout: true
+                    ).trim()
+                    echo "_Checked out branch: ${env.BRANCH_NAME}_"
+                }
             }
         }
 
@@ -39,7 +48,7 @@ pipeline {
                 script {
                     withCredentials([usernamePassword(credentialsId: 'dockerhub-creds', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
                         sh """
-                            echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+                            echo "\$DOCKER_PASS" | docker login -u "\$DOCKER_USER" --password-stdin
                             docker push ${env.DOCKER_REPO}:${env.BUILD_NUMBER}
                             docker push ${env.DOCKER_REPO}:latest
                             docker logout
@@ -54,18 +63,18 @@ pipeline {
                 script {
                     if (env.BRANCH_NAME == 'dev') {
                         sh 'echo "Deploying DEV version to AWS..."'
-                        // Example: Update ECS dev service
-                        // aws ecs update-service --cluster dev-cluster --service my-app-dev-service --force-new-deployment --region ${AWS_REGION}
-                    } else if (env.BRANCH_NAME == 'master') {
+                        // Example for dev environment (ECS)
+                        // withCredentials([usernamePassword(credentialsId: 'aws-creds', usernameVariable: 'AWS_ACCESS_KEY_ID', passwordVariable: 'AWS_SECRET_ACCESS_KEY')]) {
+                        //     sh "aws ecs update-service --cluster react-dev-cluster --service react-app-dev --force-new-deployment --region ${AWS_REGION}"
+                        // }
+                    } else if (env.BRANCH_NAME == 'main') {
                         sh 'echo "Deploying PROD version to AWS..."'
-                        // Example: Update ECS prod service
-                        // aws ecs update-service --cluster prod-cluster --service my-app-prod-service --force-new-deployment --region ${AWS_REGION}
+                        // Example for prod environment (ECS)
+                        // withCredentials([usernamePassword(credentialsId: 'aws-creds', usernameVariable: 'AWS_ACCESS_KEY_ID', passwordVariable: 'AWS_SECRET_ACCESS_KEY')]) {
+                        //     sh "aws ecs update-service --cluster react-prod-cluster --service react-app-prod --force-new-deployment --region ${AWS_REGION}"
+                        // }
                     }
-
-                    // 🔧 Replace above with your actual deployment commands:
-                    // - ECS task definition update + service reload
-                    // - Or EC2 script (e.g., pull image + restart container)
-                    // - Or use AWS CodeDeploy, etc.
+                    // 🔧 Uncomment and customize the AWS commands above when ready
                 }
             }
         }
