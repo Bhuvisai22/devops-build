@@ -12,7 +12,7 @@ pipeline {
         stage('Checkout') {
             steps {
                 git url: 'https://github.com/Bhuvisai22/devops-build.git',
-                    branch: "${dev}"
+                    branch: "dev"
             }
         }
 
