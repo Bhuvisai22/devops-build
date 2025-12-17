@@ -1,5 +1,6 @@
 services:
-  web:
+  react-app:
     image: saidoc540/dev:latest
+    container_name: react-appcontainer
     ports:
       - "80:80"
