@@ -2,4 +2,4 @@ services:
   web:
     image: saidoc540/dev:latest
     ports:
-      - "80:80"
+     - "${HOST_PORT}:80"
