@@ -1,21 +1,15 @@
 #!/bin/bash
 set -e
 
-echo "Deploying React App using Docker Compose"
+# Assign host port per branch
+if [ "$BRANCH_NAME" == "dev" ]; then
+    export HOST_PORT=8081
+elif [ "$BRANCH_NAME" == "main" ]; then
+    export HOST_PORT=8080
+else
+    export HOST_PORT=8090
+fi
 
-# Stop and remove existing containers, networks, volumes, and orphans
-docker compose down --remove-orphans || true
-
-# Remove any leftover container manually (force remove if it exists)
-docker rm -f react-appcontainer 2>/dev/null || true
-
-# Pull the latest images from Docker Hub
+docker compose down --remove-orphans
 docker compose pull
-
-# Start containers in detached mode
 docker compose up -d --remove-orphans
-
-# List running containers to verify deployment
-docker compose ps
-
-echo "✅ Application deployed successfully"
