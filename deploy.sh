@@ -3,19 +3,19 @@ set -e
 
 echo "Deploying React App using Docker Compose"
 
-# Stop and remove existing containers and orphans
-docker compose down --remove-orphans
+# Stop and remove existing containers, networks, volumes, and orphans
+docker compose down --remove-orphans || true
 
-# Optional: remove any leftover container manually by name
+# Remove any leftover container manually (force remove if it exists)
 docker rm -f react-appcontainer 2>/dev/null || true
 
-# Pull latest image from Docker Hub
+# Pull the latest images from Docker Hub
 docker compose pull
 
-# Start containers
+# Start containers in detached mode
 docker compose up -d --remove-orphans
 
-# Optional: list running containers
+# List running containers to verify deployment
 docker compose ps
 
 echo "✅ Application deployed successfully"
