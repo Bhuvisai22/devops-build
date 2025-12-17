@@ -23,29 +23,29 @@ pipeline {
             }
         }
 
-        stage('Push to DockerHub') {
-            steps {
-                script {
-                    withCredentials([usernamePassword(
-                        credentialsId: 'dockerhub-creds',
-                        usernameVariable: 'saidoc540',
-                        passwordVariable: 'dckr_pat_PUsA_CJquw1Af99L4nUO4fybpAM'
-                    )]) {
-                        sh "echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin"
+       stage('Push to DockerHub') {
+    steps {
+        script {
+            withCredentials([usernamePassword(
+                credentialsId: 'dockerhub-creds',
+                usernameVariable: 'DOCKER_USER',
+                passwordVariable: 'DOCKER_PASS'
+            )]) {
+                sh "echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin"
 
-                        if (env.BRANCH_NAME == 'dev') {
-                            sh "docker tag react-static-app:latest $DEV_REGISTRY:$IMAGE_TAG"
-                            sh "docker push $DEV_REGISTRY:$IMAGE_TAG"
-                        } else if (env.BRANCH_NAME == 'master') {
-                            sh "docker tag react-app:latest $PROD_REGISTRY:$IMAGE_TAG"
-                            sh "docker push $PROD_REGISTRY:$IMAGE_TAG"
-                        } else {
-                            echo "Branch is neither dev nor master. Skipping Docker push."
-                        }
-                    }
+                if (env.BRANCH_NAME == 'dev') {
+                    sh "docker tag react-app:latest $DEV_REGISTRY:$IMAGE_TAG"
+                    sh "docker push $DEV_REGISTRY:$IMAGE_TAG"
+                } else if (env.BRANCH_NAME == 'master') {
+                    sh "docker tag react-app:latest $PROD_REGISTRY:$IMAGE_TAG"
+                    sh "docker push $PROD_REGISTRY:$IMAGE_TAG"
+                } else {
+                    echo "Branch is neither dev nor master. Skipping Docker push."
                 }
             }
         }
+    }
+}
 
         stage('Deploy') {
             steps {
