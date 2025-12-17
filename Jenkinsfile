@@ -13,7 +13,7 @@ pipeline {
                 script {
                     echo "Building branch: ${env.BRANCH_NAME}"  // ✅ Auto-set by Multibranch
 
-                    if (env.BRAND_NAME == 'dev') {
+                    if (env.BRANch_NAME == 'dev') {
                         env.DOCKER_REPO = "${DOCKERHUB_USERNAME}/${APP_NAME}-dev"
                     } else if (env.BRANCH_NAME == 'main') {
                         env.DOCKER_REPO = "${DOCKERHUB_USERNAME}/${APP_NAME}-prod"
