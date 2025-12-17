@@ -2,72 +2,65 @@ pipeline {
     agent any
 
     environment {
-        DOCKERHUB_USERNAME = 'saidoc540'
-        APP_NAME = 'react-app'
-        AWS_REGION = 'ap-south-1'
+        DEV_REGISTRY = "saidoc540/dev"
+        PROD_REGISTRY = "saidoc540/prod"
+        IMAGE_NAME = "react-app"
+        IMAGE_TAG = "latest"
     }
 
     stages {
+        stage('Checkout') {
+            steps {
+                git url: 'https://github.com/Bhuvisai22/devops-build.git',
+                    branch: "${dev}"
+            }
+        }
+
         stage('Build Docker Image') {
             steps {
-                script {
-                    echo "Building branch: ${env.BRANCH_NAME}"  // ✅ Auto-set by Multibranch
-
-                    if (env.BRANCH_NAME == 'dev') {
-                        env.DOCKER_REPO = "${DOCKERHUB_USERNAME}/${APP_NAME}-dev"
-                    } else if (env.BRANCH_NAME == 'main') {
-                        env.DOCKER_REPO = "${DOCKERHUB_USERNAME}/${APP_NAME}-prod"
-                    } else {
-                        currentBuild.result = 'ABORTED'
-                        error "Only 'dev' and 'main' branches are allowed"
-                    }
-
-                    sh "docker build -t ${env.DOCKER_REPO}:${env.BUILD_NUMBER} ."
-                    sh "docker tag ${env.DOCKER_REPO}:${env.BUILD_NUMBER} ${env.DOCKER_REPO}:latest"
-                }
+                sh 'chmod +x build.sh'
+                sh './build.sh'
             }
         }
 
         stage('Push to DockerHub') {
             steps {
-                withCredentials([usernamePassword(
-                    credentialsId: 'dockerhub-creds',
-                    usernameVariable: 'DOCKER_USER',
-                    passwordVariable: 'DOCKER_PASS'
-                )]) {
-                    sh """
-                        echo "\$DOCKER_PASS" | docker login -u "\$DOCKER_USER" --password-stdin
-                        docker push ${env.DOCKER_REPO}:${env.BUILD_NUMBER}
-                        docker push ${env.DOCKER_REPO}:latest
-                        docker logout
-                    """
-                }
-            }
-        }
+                script {
+                    withCredentials([usernamePassword(
+                        credentialsId: 'dockerhub-creds',
+                        usernameVariable: 'saidoc540',
+                        passwordVariable: 'dckr_pat_PUsA_CJquw1Af99L4nUO4fybpAM'
+                    )]) {
+                        sh "echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin"
 
-        stage('Deploy to AWS') {
-            steps {
-                withCredentials([usernamePassword(
-                    credentialsId: 'aws-creds',
-                    usernameVariable: 'AWS_ACCESS_KEY_ID',
-                    passwordVariable: 'AWS_SECRET_ACCESS_KEY'
-                )]) {
-                    script {
                         if (env.BRANCH_NAME == 'dev') {
-                            sh 'echo "Deploying DEV to AWS..."'
-                            // Add real AWS dev deploy command
-                        } else if (env.BRANCH_NAME == 'main') {
-                            sh 'echo "Deploying PROD to AWS..."'
-                            // Add real AWS prod deploy command
+                            sh "docker tag react-static-app:latest $DEV_REGISTRY:$IMAGE_TAG"
+                            sh "docker push $DEV_REGISTRY:$IMAGE_TAG"
+                        } else if (env.BRANCH_NAME == 'master') {
+                            sh "docker tag react-app:latest $PROD_REGISTRY:$IMAGE_TAG"
+                            sh "docker push $PROD_REGISTRY:$IMAGE_TAG"
+                        } else {
+                            echo "Branch is neither dev nor master. Skipping Docker push."
                         }
                     }
                 }
             }
         }
+
+        stage('Deploy') {
+            steps {
+                sh 'chmod +x deploy.sh'
+                sh './deploy.sh'
+            }
+        }
     }
 
     post {
-        success { echo "✅ Success on branch ${env.BRANCH_NAME}" }
-        failure { echo "❌ Failed on branch ${env.BRANCH_NAME}" }
+        success {
+            echo "✅ Deployment completed successfully for branch ${BRANCH_NAME}!"
+        }
+        failure {
+            echo "❌ Pipeline failed. Check logs."
+        }
     }
 }
