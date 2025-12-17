@@ -4,8 +4,8 @@ pipeline {
     environment {
         // Docker image name base
         DOCKERHUB_USERNAME = 'saidoc540'
-        APP_NAME = 'my-app'  // Change to your app name
-        AWS_REGION = 'us-east-1'  // Adjust as needed
+        APP_NAME = 'react-app'  // Change to your app name
+        AWS_REGION = 'ap-south-1'  // Adjust as needed
     }
 
     stages {
@@ -21,10 +21,10 @@ pipeline {
                     // Determine target repo based on branch
                     if (env.BRANCH_NAME == 'dev') {
                         env.DOCKER_REPO = "${DOCKERHUB_USERNAME}/${APP_NAME}-dev"
-                    } else if (env.BRANCH_NAME == 'master') {
+                    } else if (env.BRANCH_NAME == 'main') {
                         env.DOCKER_REPO = "${DOCKERHUB_USERNAME}/${APP_NAME}-prod"
                     } else {
-                        error "Deployment only allowed from 'dev' or 'master' branches"
+                        error "Deployment only allowed from 'dev' or 'main' branches"
                     }
 
                     // Build image with tag
