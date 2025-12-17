@@ -12,4 +12,10 @@ docker compose pull
 # Start containers
 docker compose up -d --remove-orphans
 
+# Stop and remove the existing container if it exists
+docker rm -f react-appcontainer || true
+
+# Then deploy
+docker-compose up -d
+
 echo "✅ Application deployed successfully"
