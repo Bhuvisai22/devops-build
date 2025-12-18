@@ -3,4 +3,4 @@ services:
     image: saidoc540/dev:latest
     container_name: react-appcontainer-${BRANCH_NAME}
     ports:
-      - "${HOST_PORT}:80"
+      - "80:80"
